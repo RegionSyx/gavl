@@ -1,0 +1,35 @@
+1
+1
+
+a
+(Relation a)
+
+test_var
+(Relation test_var)
+
+teem.test
+(VAR (Relation teem) test)
+
+other.model.test
+(VAR (Relation other.model) test)
+
+1 + 2
+(ADD 1 2)
+
+1 - 2
+(SUB 1 2)
+
+1 * 2
+(MULT 1 2)
+
+1 / 2
+(DIV 1 2)
+
+-1
+(SIGN_NEG 1)
+
++1
+(SIGN_POS 1)
+
+foo(1)
+(APPLY foo 1)

@@ -1,0 +1,10 @@
+pandas
+pyparsing
+pytest-cov
+pytest-pep8
+click
+sqlalchemy
+sqlalchemy-redshift
+-e git://github.com/sqlalchemy-redshift/sqlalchemy-redshift.git@db9f224ba3f05b9370964ac918be13ab488c091d#egg=redshift-alchemy-dev
+graphviz
+
