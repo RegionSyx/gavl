@@ -16,7 +16,7 @@ def connection(db):
     conn.close()
 
 
-@pytest.fixture()
+@pytest.fixture(scope='function')
 def transaction(connection):
     transaction = connection.begin()
     yield transaction

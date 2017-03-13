@@ -91,7 +91,7 @@ class RetrieveRelations(nodes.NodeVisitor):
 
     def visit_relation(self, node):
         table = self.engine.get_relation(node.name)
-        if not table or not isinstance(table, engine.SARelation):
+        if not table or not isinstance(table, gavl.SARelation):
             raise Exception("Could not find sql relation '{}'".format(node.name))
         return set([table])
 
