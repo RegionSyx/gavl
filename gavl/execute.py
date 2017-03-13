@@ -17,7 +17,7 @@ import functools
 import gavl
 import pandas as pd
 import sqlalchemy as sa
-from gavl import planner, nodes, engine, constants
+from gavl import planner, nodes, constants
 
 ExecutionNode = nodes.Node
 
@@ -38,7 +38,7 @@ def plan_execution(node, engine, filters=[]):
     froms = [j for j in query.joins if j[1] is None]
     joins = [j for j in query.joins if j[1] is not None]
 
-    date_table = engine.get_relation("date").table_clause
+    date_table = getattr(engine.get_relation("date"), 'table_clause', None)
 
     group_selects = [date_table.c.day_date.label(k) for k in query.groups]
 

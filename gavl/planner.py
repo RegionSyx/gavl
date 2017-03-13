@@ -96,6 +96,8 @@ class Planner(nodes.NodeVisitor):
     def visit_apply(self, node):
         func_name, func_arg = node
         assert len(list(ActiveFieldResolver(self.engine).visit(node.func_arg))) == 1, str(func_arg)
+        print(constants.AggFuncs)
+        print(constants.AggFuncs['SUM'])
         return AggNode(func_arg,
                        self.gensym(),
                        list(ActiveFieldResolver(self.engine).visit(node.func_arg))[0],
