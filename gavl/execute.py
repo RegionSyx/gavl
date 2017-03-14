@@ -33,7 +33,7 @@ SUPPORTED_FILTER_OPERATORS = {
 
 def plan_execution(node, engine, filters=[]):
     query = node
-    query = SQLCompiler(engine).visit(query)
+    query = SQLCompiler(engine, filters).visit(query)
 
     froms = [j for j in query.joins if j[1] is None]
     joins = [j for j in query.joins if j[1] is not None]
@@ -115,8 +115,9 @@ class RetrieveRelations(nodes.NodeVisitor):
 
 
 class SQLCompiler(nodes.NodeVisitor):
-    def __init__(self, engine):
+    def __init__(self, engine, filters=[]):
         self.engine = engine
+        self.filters = filters
 
     def visit_constant(self, node):
         return SQLNode([sa.sql.expression.literal(node.value)], [], {})
@@ -210,10 +211,27 @@ class SQLCompiler(nodes.NodeVisitor):
         for j in joins:
             from_clause = from_clause.join(*j)
 
-        sub_query = sa.select([agg_func(agg_col)]).select_from(from_clause).as_scalar()
+        sub_query = sa.select([agg_func(agg_col)]).select_from(from_clause)
+
+        for f in self.filters:
+            table, column = f["attr"].split(".")
+            rel = self.engine.get_relation(table)
+            assert rel is not None
+
+            if rel.table_clause not in [x[0] for x in node.relation.joins]:
+                continue
+
+            def oper(x, y):
+                return constants.PYTHON_OPERATORS[
+                    SUPPORTED_FILTER_OPERATORS[f["oper"]]
+                ](x, y)
+
+            sub_query = sub_query.where(
+                oper(getattr(rel.table_clause.c, column),
+                    f["value"]))
 
         return SQLNode(
-            [sub_query],
+            [sub_query.as_scalar()],
             joins=[],
             groups=node.relation.groups
         )
