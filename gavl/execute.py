@@ -50,12 +50,17 @@ def plan_execution(node, engine, filters=[]):
     for j in joins:
         from_clause = from_clause.join(*j)
 
+    from_clause = from_clause.join(date_table)
+
     sa_query = sa_query.select_from(from_clause)
 
     for f in filters:
         table, column = f["attr"].split(".")
         rel = engine.get_relation(table)
         assert rel is not None
+
+        if table != "date" and rel.table_clause not in [x[0] for x in query.joins]:
+            continue
 
         def oper(x, y):
             return constants.PYTHON_OPERATORS[
@@ -74,7 +79,6 @@ def plan_execution(node, engine, filters=[]):
         sa_query = sa_query.order_by(
             engine.get_relation(group).table_clause.c.day_date
         )
-
 
     result = pd.read_sql_query(sa_query, engine.db.connect())
 #    out_field = list(ActiveFieldResolver(engine).visit(node))[0]
@@ -111,7 +115,7 @@ class RetrieveRelations(nodes.NodeVisitor):
         return node.relation
 
     def visit_agg(self, node):
-        return node.relation
+        return set()
 
 
 class SQLCompiler(nodes.NodeVisitor):
@@ -196,7 +200,16 @@ class SQLCompiler(nodes.NodeVisitor):
         else:
             agg_func = getattr(sa.func, node.func.name)
 
-        if len(node.relation.joins) <= 1:
+        should_subquery = False
+        for f in self.filters:
+            table, column = f["attr"].split(".")
+            rel = self.engine.get_relation(table)
+            assert rel is not None
+
+            if rel.table_clause in [x[0] for x in node.relation.joins]:
+                should_subquery = True
+
+        if len(node.relation.joins) <= 1 and not should_subquery:
             return SQLNode([agg_func(node.relation.fields[0])],
                         node.relation.joins, node.groups)
 

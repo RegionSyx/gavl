@@ -27,3 +27,5 @@ def test_simple_load(db, connection, transaction):
     query = "test.field"
     result = gavl_engine.query(query)
     assert result["result"].iloc[0] == 42
+
+    SampleTable.__table__.drop(bind=connection)

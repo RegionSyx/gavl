@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
+import os
+import datetime
 import pprint
 import importlib
 import click
@@ -41,14 +44,22 @@ class REPL(cmd.Cmd):
 @click.option('--settings', envvar="GAVL_SETTINGS", type=str, required=True)
 def main(gavl_file, interactive, settings):
 
-    module = importlib.import_module(settings)
+    sys.path.append(os.path.abspath(settings))
+
+    module = importlib.import_module(os.path.basename(settings).split('.')[0])
     engine = getattr(module, 'ENGINE', None)
     if engine is None:
         click.echo("Must define ENGINE in settings file")
         return 2
 
     if gavl_file is not None:
-        result = engine.query(gavl_file.read())
+        filters = [{"attr": 'date.day_date',
+                    "oper": ">=",
+                    "value": datetime.date(2017, 2, 13) },
+                   {"attr": 'date.day_date',
+                    "oper": "<=",
+                    "value": datetime.date(2017, 3, 13)}]
+        result = engine.query(gavl_file.read(), filters=filters)
         if result is not None:
             click.echo(result)
 
