@@ -46,11 +46,19 @@ def plan_execution(node, engine, filters=[]):
                          [x.label("result_{}".format(i)) for i, x in
                           enumerate(query.fields)])
     assert len(froms) == 1, str(sa_query)
+    joined = set()
     from_clause = froms[0][0]
     for j in joins:
         from_clause = from_clause.join(*j)
+        joined.update(j[0])
 
-    from_clause = from_clause.join(date_table)
+    for f in filters:
+        table, column = f["attr"].split(".")
+        rel = engine.get_relation(table)
+        assert rel is not None
+        if rel.table_clause not in joined:
+            from_clause = from_clause.join(rel.table_clause)
+            joined.update([rel.table_clause])
 
     sa_query = sa_query.select_from(from_clause)
 
