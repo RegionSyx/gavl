@@ -59,9 +59,6 @@ def plan_execution(node, engine, filters=[]):
         rel = engine.get_relation(table)
         assert rel is not None
 
-        if table != "date" and rel.table_clause not in [x[0] for x in query.joins]:
-            continue
-
         def oper(x, y):
             return constants.PYTHON_OPERATORS[
                 SUPPORTED_FILTER_OPERATORS[f["oper"]]
