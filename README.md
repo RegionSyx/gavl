@@ -1,4 +1,6 @@
 # GAVL
+[![Documentation Status](https://readthedocs.org/projects/gavl/badge/?version=latest)](http://gavl.readthedocs.io/en/latest/?badge=latest)
+
 
 GAVL is an expression language for standardizing data definitions. It also
 builds queries based off of these definitions that could potentally be from
