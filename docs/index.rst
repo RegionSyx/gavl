@@ -10,6 +10,9 @@ Welcome to GAVL's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+   The GAVL Language <lang>
+   Python API <api>
+   Command Line <cli>
 
 
 Indices and tables
