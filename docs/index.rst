@@ -13,6 +13,7 @@ Welcome to GAVL's documentation!
    The GAVL Language <lang>
    Python API <api>
    Command Line <cli>
+   references/grammar
 
 
 Indices and tables
