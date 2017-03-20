@@ -33,62 +33,15 @@ SUPPORTED_FILTER_OPERATORS = {
 
 def plan_execution(node, engine, filters=[]):
     query = node
+    print(query)
     query = SQLCompiler(engine, filters).visit(query)
+    print(query)
 
-    froms = [j for j in query.joins if j[1] is None]
-    joins = [j for j in query.joins if j[1] is not None]
 
-    date_table = getattr(engine.get_relation("date"), 'table_clause', None)
-
-    group_selects = [date_table.c.day_date.label(k) for k in query.groups]
-
-    sa_query = sa.select(group_selects +
-                         [x.label("result_{}".format(i)) for i, x in
-                          enumerate(query.fields)])
-    assert len(froms) == 1, str(sa_query)
-    joined = set()
-    from_clause = froms[0][0]
-    for j in joins:
-        from_clause = from_clause.join(*j)
-        joined.update(j[0])
-
-    for f in filters:
-        table, column = f["attr"].split(".")
-        rel = engine.get_relation(table)
-        assert rel is not None
-        if rel.table_clause not in joined:
-            from_clause = from_clause.join(rel.table_clause)
-            joined.update([rel.table_clause])
-
-    sa_query = sa_query.select_from(from_clause)
-
-    for f in filters:
-        table, column = f["attr"].split(".")
-        rel = engine.get_relation(table)
-        assert rel is not None
-
-        def oper(x, y):
-            return constants.PYTHON_OPERATORS[
-                SUPPORTED_FILTER_OPERATORS[f["oper"]]
-            ](x, y)
-
-        sa_query = sa_query.where(
-            oper(getattr(rel.table_clause.c, column),
-                 f["value"]))
-
-    for group in query.groups:
-        assert group == "date"
-        sa_query = sa_query.group_by(
-            engine.get_relation(group).table_clause.c.day_date
-        )
-        sa_query = sa_query.order_by(
-            engine.get_relation(group).table_clause.c.day_date
-        )
-
-    result = pd.read_sql_query(sa_query, engine.db.connect())
-#    out_field = list(ActiveFieldResolver(engine).visit(node))[0]
-    assert "result_0" in result
-    result.rename(columns={"result_0": "result"}, inplace=True)
+    result = pd.read_sql_query(query, engine.db.connect())
+    out_field = list(ActiveFieldResolver(engine).visit(node))[0]
+    assert out_field in result, out_field
+    result.rename(columns={out_field: "result"}, inplace=True)
 
     return result
 
@@ -129,64 +82,39 @@ class SQLCompiler(nodes.NodeVisitor):
         self.filters = filters
 
     def visit_constant(self, node):
-        return SQLNode([sa.sql.expression.literal(node.value)], [], {})
+        return sa.select([sa.sql.expression.literal(node.value)])
 
     def visit_relation(self, node):
         sa_relation = self.engine.get_relation(node.name)
-        return SQLNode([c for c in sa_relation.table_clause.c],
-                       [(sa_relation.table_clause, None)], {})
+        return sa_relation.table_clause
 
     def visit_project(self, node):
-    #    assert len(node.relation.fields) == 1, str(node)
-    #    assert hasattr(node.relation.fields[0], 'c'), str(node)
-        return SQLNode(fields=[c for c in node.relation.fields if c.name
-                               in node.fields], joins=node.relation.joins,
-                       groups=node.relation.groups)
+        return sa.select([c for c in node.relation.columns if c.name
+                               in node.fields]).select_from(node.relation)
 
     def visit_select(self, node):
-        return SQLNode(node.fields, node.joins, node.groups, node.filters +
-                       [node.cond])
+        return node.relation.filter(node.cond)
 
     def visit_rename(self, node):
-        return node
+        return node.relation
 
-    def pre_visit_join(self, node):
-        left_rels = RetrieveRelations(self.engine).visit(node.left)
-        right_rels = RetrieveRelations(self.engine).visit(node.right)
-        return node, {"left_rels": left_rels, "right_rels": right_rels}
+    def visit_join(self, node):
+        left_cols = [c for c in node.left.c]
+        right_cols = [c for c in node.right.c]
+        join_on = [
+            l == r
+            for l in left_cols
+            for r in right_cols
+            if l.name == r.name
+        ]
 
-    def visit_join(self, node, left_rels, right_rels):
-        joins = node.left.joins
-        result = node.left
-        diff_rels = right_rels - left_rels
+        if join_on:
+            join_cond = functools.reduce(sa.and_, join_on)
+            return node.left.join(node.right, join_cond)
+        else:
+            raise Exception("Calculating a Cross Product")
+            return sa.select([node.left, node.right])
 
-        left_variable_cols = {}
-        for rel in left_rels:
-            for k, v in rel.variables.items():
-                if v not in left_variable_cols:
-                    left_variable_cols[v] = getattr(rel.table_clause.c, k)
-
-        for rel in diff_rels:
-            join_cols = []
-            for k, v in rel.variables.items():
-                if v not in left_variable_cols:
-                    pass
-                    #raise Exception("{} not found in other joins".format(v))
-                else:
-                    join_cols.append(
-                        left_variable_cols[v] == getattr(rel.table_clause.c, k)
-                    )
-
-            if len(join_cols) > 0:
-                joins.append((rel.table_clause, functools.reduce(sa.and_,
-                                                          join_cols)))
-                    #result = result.join(table, join_cols[0])
-
-        groups = node.left.groups.copy()
-        groups.update(node.right.groups)
-
-        return SQLNode(node.left.fields + node.right.fields, joins,
-                       groups)
 
     def visit_arithmetic(self, node):
 
@@ -194,10 +122,11 @@ class SQLCompiler(nodes.NodeVisitor):
             f = constants.PYTHON_OPERATORS[node.op_code]
             return f(left, right)
 
-        return SQLNode([(functools.reduce(_visit,
-                                          node.relation.fields)).label(node.out_field)],
-                       node.relation.joins, node.relation.groups)
-#        return result
+        return sa.select([(
+            functools.reduce(
+                _visit,
+                node.relation.c)
+        ).label(node.out_field)]).select_from(node.relation)
 
     def visit_agg(self, node):
         if node.func.name == "UNIQUE":
@@ -205,55 +134,12 @@ class SQLCompiler(nodes.NodeVisitor):
         else:
             agg_func = getattr(sa.func, node.func.name)
 
-        should_subquery = False
-        for f in self.filters:
-            table, column = f["attr"].split(".")
-            rel = self.engine.get_relation(table)
-            assert rel is not None
-
-            if rel.table_clause in [x[0] for x in node.relation.joins]:
-                should_subquery = True
-
-        if len(node.relation.joins) <= 1 and not should_subquery:
-            return SQLNode([agg_func(node.relation.fields[0])],
-                        node.relation.joins, node.groups)
-
-        agg_col = [c for c in node.relation.fields if c.name == node.field]
+        agg_col = [c for c in node.relation.columns if c.name == node.field]
         assert len(agg_col) == 1, str(agg_col)
         agg_col = agg_col[0]
 
-        froms = [j for j in node.relation.joins if j[1] is None]
-        joins = [j for j in node.relation.joins if j[1] is not None]
-
-        from_clause = froms[0][0]
-        for j in joins:
-            from_clause = from_clause.join(*j)
-
-        sub_query = sa.select([agg_func(agg_col)]).select_from(from_clause)
-
-        for f in self.filters:
-            table, column = f["attr"].split(".")
-            rel = self.engine.get_relation(table)
-            assert rel is not None
-
-            if rel.table_clause not in [x[0] for x in node.relation.joins]:
-                continue
-
-            def oper(x, y):
-                return constants.PYTHON_OPERATORS[
-                    SUPPORTED_FILTER_OPERATORS[f["oper"]]
-                ](x, y)
-
-            sub_query = sub_query.where(
-                oper(getattr(rel.table_clause.c, column),
-                    f["value"]))
-
-        return SQLNode(
-            [sub_query.as_scalar()],
-            joins=[],
-            groups=node.relation.groups
-        )
-
+        return (sa.select([agg_func(agg_col).label(node.out_field)])
+                .select_from(node.relation))
 
 class ActiveFieldResolver(nodes.NodeVisitor):
     def __init__(self, engine):

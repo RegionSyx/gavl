@@ -62,23 +62,28 @@ class Planner(nodes.NodeVisitor):
 
     def visit_binary_op(self, node):
         op_code, left, right = node
-        left_is_relation = isinstance(left, RelationNode)
-        right_is_relation = isinstance(right, RelationNode)
-        assert not (left_is_relation and right_is_relation)
+        left_is_var = isinstance(left, ProjectNode)
+        right_is_var = isinstance(right, ProjectNode)
+        assert left_is_var or right_is_var
 
-        if (not left_is_relation) and (not right_is_relation):
+        if left_is_var and right_is_var:
             left_fields = list(ActiveFieldResolver(self.engine).visit(left))
             right_fields = list(ActiveFieldResolver(self.engine).visit(right))
             assert len(left_fields) == 1
             assert len(right_fields) == 1
-            return ArithmeticNode(
-                JoinNode(left, right, constants.JoinTypes.INNER,
-                        constants.JoinSides.FULL),
-                self.gensym(),
-                left_fields[0],
-                right_fields[0],
-                op_code)
-        elif left_is_relation or right_is_relation:
+            if left.relation == right.relation:
+                return ArithmeticNode(
+                    ProjectNode(
+                        left.relation,
+                        left_fields[0] + right_fields[0]
+                    ),
+                    self.gensym(), left_fields[0], right_fields[0], op_code)
+            else:
+                return ArithmeticNode(
+                    JoinNode(left, right, constants.JoinTypes.INNER,
+                            constants.JoinSides.FULL),
+                    self.gensym(), left_fields[0], right_fields[0], op_code)
+        else:
             active_field = None
             if not left_is_relation:
                 active_field = list(ActiveFieldResolver(self.engine).visit(left))[0]
