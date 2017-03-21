@@ -52,7 +52,7 @@ class GavlToRelAlg(nodes.NodeVisitor):
                 return ArithmeticNode(
                     ProjectNode(
                         left.relation,
-                        left_fields[0] + right_fields[0]
+                        [left_fields[0], right_fields[0]]
                     ),
                     self.gensym(), left_fields[0], right_fields[0], op_code)
             else:

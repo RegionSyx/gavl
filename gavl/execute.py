@@ -117,6 +117,7 @@ class SQLCompiler(nodes.NodeVisitor):
 
 
     def visit_arithmetic(self, node):
+        fields = [node.left_field, node.right_field]
 
         def _visit(left, right):
             f = constants.PYTHON_OPERATORS[node.op_code]
@@ -125,7 +126,7 @@ class SQLCompiler(nodes.NodeVisitor):
         return sa.select([(
             functools.reduce(
                 _visit,
-                node.relation.c)
+                [getattr(node.relation.c, x) for x in fields])
         ).label(node.out_field)]).select_from(node.relation)
 
     def visit_agg(self, node):
