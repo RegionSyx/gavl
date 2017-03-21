@@ -16,22 +16,15 @@
 import collections
 
 from gavl.constants import OpCodes
-from gavl import nodes
 
 from pyparsing import (Word, alphas, nums, oneOf, opAssoc, operatorPrecedence,
                        Suppress, Forward, delimitedList, Optional)
 
 _graphviz_counter = 0
 
-ASTNode = nodes.Node
 
-ApplyNode = ASTNode("apply", "func_name func_arg")
-UnaryOpNode = ASTNode("unary_op", "op_code expr")
-BinaryOpNode = ASTNode("binary_op", "op_code left right")
-VarNode = ASTNode("var", "var_name relation")
-RelationNode = ASTNode("relation", "name")
-IntNode = ASTNode("int", "value")
-AssignNode = ASTNode("assign", "var_name expr")
+from gavl.parser.nodes import (ApplyNode, UnaryOpNode, BinaryOpNode, VarNode,
+                               RelationNode, IntNode, AssignNode)
 
 expr = Forward()
 
