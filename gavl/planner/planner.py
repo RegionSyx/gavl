@@ -17,20 +17,8 @@ import sys
 import numbers
 import collections
 import sqlalchemy as sa
-from gavl import constants, parse, parser, nodes
-
-RelAlgNode = nodes.Node
-
-ConstantNode = RelAlgNode("constant", "field value")
-RelationNode = RelAlgNode("relation", "name")
-ProjectNode = RelAlgNode("project", "relation fields")
-RenameNode = RelAlgNode("rename", "relation old_name new_name")
-JoinNode = RelAlgNode("join", "left, right, join_type, join_side")
-ArithmeticNode = RelAlgNode("arithmetic",
-                            "relation out_field left_field right_field op_code")
-AggNode = RelAlgNode("agg", "relation out_field field func groups")
-AssignNode = RelAlgNode("assign", "var_name relation")
-
+from gavl import constants, parse, parser
+from gavl.planner.nodes import *
 
 class Planner(nodes.NodeVisitor):
     def __init__(self, engine, groups={}):
@@ -146,7 +134,6 @@ class ActiveFieldResolver(nodes.NodeVisitor):
 
     def visit_agg(self, node):
         return {node.out_field}
-
 
 def plan(ast_node, engine, groups={}):
     return Planner(engine, groups).visit(ast_node)
