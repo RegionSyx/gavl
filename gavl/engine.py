@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import gavl
-from gavl import planner, constants
+from gavl import relalg, constants
 from gavl.execute import plan_execution
 import pandas as pd
 from pandas.core.common import is_timedelta64_dtype
@@ -106,7 +106,7 @@ class Engine(object):
         groups = {g: gavl.parse(g) for g in groupby}
         root_plan = gavl.plan(root_ast, self, groups)
 
-        root_plan = planner.VariableSaver(self).visit(root_plan)
+        root_plan = relalg.VariableSaver(self).visit(root_plan)
         if root_plan is None:
             return None
 

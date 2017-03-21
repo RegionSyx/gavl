@@ -18,7 +18,7 @@ import numbers
 import collections
 import sqlalchemy as sa
 from gavl import constants, parse, parser
-from gavl.planner.nodes import *
+from gavl.relalg.nodes import *
 
 class Planner(nodes.NodeVisitor):
     def __init__(self, engine, groups={}):
