@@ -16,6 +16,7 @@
 import collections
 
 from gavl.constants import OpCodes
+from gavl import nodes
 
 from pyparsing import (Word, alphas, nums, oneOf, opAssoc, operatorPrecedence,
                        Suppress, Forward, delimitedList, Optional)
