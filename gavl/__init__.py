@@ -13,6 +13,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from gavl.parser import parse
-from gavl.relalg import plan
+from gavl.parser import parse, plan
 from gavl.engine import Engine, SARelation

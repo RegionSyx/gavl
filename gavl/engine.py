@@ -106,9 +106,9 @@ class Engine(object):
         groups = {g: gavl.parse(g) for g in groupby}
         root_plan = gavl.plan(root_ast, self, groups)
 
-        root_plan = relalg.VariableSaver(self).visit(root_plan)
-        if root_plan is None:
-            return None
+#        root_plan = relalg.VariableSaver(self).visit(root_plan)
+#        if root_plan is None:
+#            return None
 
         result = plan_execution(root_plan, self, filters)
         if "global" in result:
