@@ -14,28 +14,11 @@
 # limitations under the License.
 
 import sys
-import numbers
-import collections
-import sqlalchemy as sa
-from gavl import constants, parse, parser, nodes
+from gavl import constants
+from gavl.relalg.nodes import *
 
-RelAlgNode = nodes.Node
-
-ConstantNode = RelAlgNode("constant", "field value")
-RelationNode = RelAlgNode("relation", "name")
-ProjectNode = RelAlgNode("project", "relation fields")
-RenameNode = RelAlgNode("rename", "relation old_name new_name")
-JoinNode = RelAlgNode("join", "left, right, join_type, join_side")
-ArithmeticNode = RelAlgNode("arithmetic",
-                            "relation out_field left_field right_field op_code")
-AggNode = RelAlgNode("agg", "relation out_field field func groups")
-AssignNode = RelAlgNode("assign", "var_name relation")
-
-
-class Planner(nodes.NodeVisitor):
-    def __init__(self, engine, groups={}):
-        self.engine = engine
-        self.groups = groups
+class GavlToRelAlg(nodes.NodeVisitor):
+    def __init__(self):
         self._counter = 0
 
     def gensym(self):
@@ -43,16 +26,10 @@ class Planner(nodes.NodeVisitor):
         return "_gensym_{}".format(self._counter)
 
     def visit_var(self, node):
-        if node.relation is None:
-            definition = self.engine.get_definition(node.var_name)
-            if not definition:
-                relation = self.engine.get_relation(node.var_name)
-                if not relation:
-                    raise Exception("'{}' not found".format(node.var_name))
-                return RelationNode(node.var_name)
-            return definition
-        else:
+        if node.relation:
             return ProjectNode(node.relation, [node.var_name])
+        else:
+            return Relation(node.var_name)
 
     def visit_int(self, node):
         return ConstantNode(self.gensym(), node.value)
@@ -67,8 +44,8 @@ class Planner(nodes.NodeVisitor):
         assert left_is_var or right_is_var
 
         if left_is_var and right_is_var:
-            left_fields = list(ActiveFieldResolver(self.engine).visit(left))
-            right_fields = list(ActiveFieldResolver(self.engine).visit(right))
+            left_fields = list(ActiveFieldResolver().visit(left))
+            right_fields = list(ActiveFieldResolver().visit(right))
             assert len(left_fields) == 1
             assert len(right_fields) == 1
             if left.relation == right.relation:
@@ -86,9 +63,9 @@ class Planner(nodes.NodeVisitor):
         else:
             active_field = None
             if not left_is_relation:
-                active_field = list(ActiveFieldResolver(self.engine).visit(left))[0]
+                active_field = list(ActiveFieldResolver().visit(left))[0]
             if not right_is_relation:
-                active_field = list(ActiveFieldResolver(self.engine).visit(right))[0]
+                active_field = list(ActiveFieldResolver().visit(right))[0]
             assert active_field is not None
 
             return ProjectNode(
@@ -100,12 +77,12 @@ class Planner(nodes.NodeVisitor):
 
     def visit_apply(self, node):
         func_name, func_arg = node
-        assert len(list(ActiveFieldResolver(self.engine).visit(node.func_arg))) == 1, str(func_arg)
+        assert len(list(ActiveFieldResolver().visit(node.func_arg))) == 1, str(func_arg)
         print(constants.AggFuncs)
         print(constants.AggFuncs['SUM'])
         return AggNode(func_arg,
                        self.gensym(),
-                       list(ActiveFieldResolver(self.engine).visit(node.func_arg))[0],
+                       list(ActiveFieldResolver().visit(node.func_arg))[0],
                        constants.AggFuncs[func_name.upper()],
                        self.groups)
 
@@ -113,29 +90,13 @@ class Planner(nodes.NodeVisitor):
         return AssignNode(node.var_name, node.expr)
 
 
-class VariableSaver(nodes.NodeVisitor):
-    def __init__(self, engine):
-        self.engine = engine
-
-    def visit_assign(self, node):
-        self.engine.add_definition(node.var_name, node.expr)
-        return None
-
-    def default_visit(self, node):
-        return node
-
-
 class ActiveFieldResolver(nodes.NodeVisitor):
-    def __init__(self, engine):
-        self.engine = engine
 
     def visit_constant(self, node):
         return {node.field}
 
     def visit_relation(self, node):
-        sa_relation = self.engine.get_relation(node.name)
-        table = sa_relation.table_clause
-        return set([c.name for c in table.c])
+        return set([])
 
     def visit_project(self, node):
         return set(node.fields)
@@ -151,7 +112,3 @@ class ActiveFieldResolver(nodes.NodeVisitor):
 
     def visit_agg(self, node):
         return {node.out_field}
-
-
-def plan(ast_node, engine, groups={}):
-    return Planner(engine, groups).visit(ast_node)

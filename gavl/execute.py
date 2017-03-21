@@ -17,7 +17,7 @@ import functools
 import gavl
 import pandas as pd
 import sqlalchemy as sa
-from gavl import planner, nodes, constants
+from gavl import relalg, nodes, constants
 
 ExecutionNode = nodes.Node
 

@@ -1,3 +1,4 @@
+
 # Copyright 2017 by Teem, and other contributors,
 # as noted in the individual source code files.
 #
@@ -13,5 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from gavl.parser import parse, plan
-from gavl.engine import Engine, SARelation
+from gavl import nodes
+
+RelAlgNode = nodes.Node
+
+ConstantNode = RelAlgNode("constant", "field value")
+RelationNode = RelAlgNode("relation", "name")
+ProjectNode = RelAlgNode("project", "relation fields")
+RenameNode = RelAlgNode("rename", "relation old_name new_name")
+JoinNode = RelAlgNode("join", "left, right, join_type, join_side")
+ArithmeticNode = RelAlgNode("arithmetic",
+                            "relation out_field left_field right_field op_code")
+AggNode = RelAlgNode("agg", "relation out_field field func groups")
+AssignNode = RelAlgNode("assign", "var_name relation")
