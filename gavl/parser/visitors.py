@@ -78,13 +78,12 @@ class GavlToRelAlg(nodes.NodeVisitor):
     def visit_apply(self, node):
         func_name, func_arg = node
         assert len(list(ActiveFieldResolver().visit(node.func_arg))) == 1, str(func_arg)
-        print(constants.AggFuncs)
-        print(constants.AggFuncs['SUM'])
         return AggNode(func_arg,
                        self.gensym(),
                        list(ActiveFieldResolver().visit(node.func_arg))[0],
                        constants.AggFuncs[func_name.upper()],
-                       self.groups)
+                       [])
+                       #self.groups)
 
     def visit_assign(self, node):
         return AssignNode(node.var_name, node.expr)
@@ -105,7 +104,7 @@ class ActiveFieldResolver(nodes.NodeVisitor):
         return node.relation
 
     def visit_join(self, node):
-        return node.left.union(node.right)
+        return node.left | node.right
 
     def visit_arithmetic(self, node):
         return {node.out_field}
