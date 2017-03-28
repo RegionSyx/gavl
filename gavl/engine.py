@@ -1,4 +1,4 @@
-# Copyright 2017 by Teem, and other contributors,
+
 # as noted in the individual source code files.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,48 +41,46 @@ def create_sa_db(conn_string):
 class Relation(object):
     pass
 
+class Attribute(object):
+    pass
+
+
+class SAAttribute(Attribute):
+    def __init__(self, parent, sa_column):
+        self.parent = parent
+        self.sa_column = sa_column
+
+    def get_sa_column(self):
+        return self.sa_column
+
 
 class SARelation(Relation):
-    def __init__(self, db, table, variables, schema='public'):
+    def __init__(self, db, table, schema='public'):
         self.db = db
-        self.variables = variables
         self.schema = schema
+        self.attributes = {}
 
-        self.table_clause = table.__table__
+        self.table_clause = table.__table__.alias()
 
-    def execute(self, filters=[]):
-        df = pd.read_sql_table(
-            self.table, self.db.connect(), schema=self.schema)
+        for attr in self.table_clause.c:
+            self.add_attribute(
+                attr.key,
+                SAAttribute(self, attr)
+            )
 
-        df.rename(columns=self.variables, inplace=True)
+    def __getattr__(self, name):
+        return self.attributes[name]
 
-        for f in filters:
-            if f["attr"] in df:
-                df = df[constants.PYTHON_OPERATORS[SUPPORTED_FILTER_OPERATORS[f[
-                    "oper"]]](df[f["attr"]], f["value"])]
-
-        df['global'] = 0
-        df.set_index(['global'] + list(self.variables.values()), inplace=True)
-        return df
+    def add_attribute(self, name, attr):
+        self.attributes[name] = attr
 
 
-class CSVRelation(Relation):
-    def __init__(self, csv_file, variables):
-        self.csv_file = csv_file
-        self.variables = variables
-
-    def execute(self):
-        df = pd.read_csv(self.csv_file)
-
-        df.rename(columns=self.variables, inplace=True)
-        df['global'] = 0
-        df.set_index(['global'] + list(self.variables.values()), inplace=True)
-        return df
 
 
 class Engine(object):
     def __init__(self, db):
         self.relations = {}
+        self.links = []
         self.symbol_table = {}
         self.db = db
 
@@ -91,12 +89,23 @@ class Engine(object):
 
     def add_relation(self, name, relation):
         self.relations[name] = relation
+        return relation
 
     def get_symbol(self, name, default=None):
         return self.symbol_table.get(name, default)
 
     def add_symbol(self, name, symbol):
         self.symbol_table[name] = symbol
+
+    def link(self, a, b):
+        self.links.append((a, b))
+
+    def find_links_between(self, from_relation, to_relation):
+        result = []
+        for a, b in self.links:
+            if a.parent == from_relation and b.parent == to_relation:
+                result.append((a, b))
+        return result
 
     def query(self, query, groupby={}, filters=[]):
         root_ast = gavl.parse(query)
@@ -105,16 +114,13 @@ class Engine(object):
         root_relalg = gavl.plan(root_ast)
         root_relalg = VariableReplacer(self).visit(root_relalg)
 
+
         root_plan = QueryPlanner(self).visit(root_relalg)
         result = QueryExecutor().visit(root_plan)
 
-        print(root_ast)
-        print(root_relalg)
-        print(root_plan)
         active_field = list(ActiveFieldResolver().visit(root_relalg))
 
         result.rename(columns={active_field[0]: "result"}, inplace=True)
-        print(active_field, result)
 
         return result
 
@@ -153,7 +159,8 @@ class VariableReplacer(PostNodeVisitor):
 PlanNode = Node
 
 SAQuery = PlanNode('sa_query', 'query conn')
-Pandas = PlanNode('pandas', 'selects filters groups sorts')
+PandasArith = PlanNode('pandas_arith', 'df out_field left_col right_col op_code')
+PandasMerge = PlanNode('pandas_merge', 'left right')
 
 
 class DataSource(object):
@@ -162,60 +169,41 @@ class DataSource(object):
 class SADataSource(DataSource):
     pass
 
-class SAQueryBuilder(PostNodeVisitor):
+class SASelectBuilder(PostNodeVisitor):
+
     def __init__(self, engine):
         self.engine = engine
 
     def visit_constant(self, node):
-        return sa.select([sa.sql.expression.literal(node.value)])
+        return [sa.sql.expression.literal_column(str(node.value))
+                .label(node.field)]
 
     def visit_relation(self, node):
         sa_relation = self.engine.get_relation(node.name)
-        if sa_relation is not None:
-            return sa_relation.table_clause
-        else:
-            raise Exception("Relation not found: {}".format(node.name))
+        return sa_relation.table_clause.columns
 
     def visit_project(self, node):
-        return sa.select([c for c in node.relation.columns if c.name
-                               in node.fields]).select_from(node.relation)
-
-    def visit_select(self, node):
-        return node.relation.filter(node.cond)
-
-    def visit_rename(self, node):
-        return node.relation
+        return [c for c in node.relation if c.name in node.fields]
 
     def visit_join(self, node):
-        left_cols = [c for c in node.left.c]
-        right_cols = [c for c in node.right.c]
-        join_on = [
-            l == r
-            for l in left_cols
-            for r in right_cols
-            if l.name == r.name
-        ]
+        return list(node.left) + list(node.right)
+        selects = [c for c in node.left]
+        for c in node.right:
+            if c.name not in [x.name for x in selects]:
+                selects.append(c)
 
-        if join_on:
-            join_cond = functools.reduce(sa.and_, join_on)
-            return node.left.join(node.right, join_cond)
-        else:
-            raise Exception("Calculating a Cross Product")
-            return sa.select([node.left, node.right])
+        return selects
 
 
     def visit_arithmetic(self, node):
-        fields = [node.left_field, node.right_field]
+        left_field = [c for c in node.relation if c.name == node.left_field]
+        right_field = [c for c in node.relation if c.name == node.right_field]
+        assert len(left_field) == 1, left_field
+        assert len(right_field) == 1, right_field
 
-        def _visit(left, right):
-            f = constants.PYTHON_OPERATORS[node.op_code]
-            return f(left, right)
+        f = constants.PYTHON_OPERATORS[node.op_code]
 
-        return sa.select([(
-            functools.reduce(
-                _visit,
-                [getattr(node.relation.c, x) for x in fields])
-        ).label(node.out_field)]).select_from(node.relation)
+        return [f(left_field[0], right_field[0]).label(node.out_field)]
 
     def visit_agg(self, node):
         if node.func.name == "UNIQUE":
@@ -223,12 +211,42 @@ class SAQueryBuilder(PostNodeVisitor):
         else:
             agg_func = getattr(sa.func, node.func.name)
 
-        agg_col = [c for c in node.relation.columns if c.name == node.field]
+        agg_col = [c for c in node.relation if c.name == node.field]
         assert len(agg_col) == 1, str(agg_col)
         agg_col = agg_col[0]
 
-        return (sa.select([agg_func(agg_col).label(node.out_field)])
-                .select_from(node.relation))
+        return [agg_func(agg_col).label(node.out_field)]
+
+
+class SAFromBuilder(PostNodeVisitor):
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    def visit_constant(self, node):
+        return []
+
+    def visit_relation(self, node):
+        sa_relation = self.engine.get_relation(node.name)
+        return [sa_relation]
+
+    def visit_join(self, node):
+        return list(set(node.left).union(set(node.right)))
+
+    def visit_select(self, node):
+        return node.relation
+
+    def visit_project(self, node):
+        return node.relation
+
+    def visit_rename(self, node):
+        return node.relation
+
+    def visit_arithmetic(self, node):
+        return node.relation
+
+    def visit_agg(self, node):
+        return node.relation
 
 
 class PandasBuilder(PostNodeVisitor):
@@ -241,10 +259,73 @@ class QueryPlanner(PreNodeVisitor):
     def __init__(self, engine):
         self.engine = engine
 
+    def visit_arithmetic(self, node):
+        if isinstance(node.relation, relalg.JoinNode):
+            if (isinstance(node.relation.left, relalg.AggNode) and
+                isinstance(node.relation.right, relalg.AggNode)):
+                return PandasArith(
+                    PandasMerge(
+                        node.relation.left,
+                        node.relation.right),
+                    node.out_field, node.left_field, node.right_field, node.op_code
+                )
+
+        return self.default_visit(node)
+
+    def visit_pandas_arith(self, node):
+        return node
+
+    def visit_pandas_merge(self, node):
+        return node
+
     def default_visit(self, node):
         # Shortcut for now
-        return SAQuery(SAQueryBuilder(self.engine).visit(node),
-                       self.engine.db.connect())
+        selects = SASelectBuilder(self.engine).visit(node)
+        froms = SAFromBuilder(self.engine).visit(node)
+        query = sa.select(selects)
+        first_from = froms[0]
+
+        nodes = {}
+        for f in froms:
+            for g in froms:
+                nodes.setdefault(f, [])
+                nodes[f].extend([x[1] for x in
+                                 self.engine.find_links_between(f, g)])
+        relations = []
+        def _visit(node, visited=[]):
+            if node in visited:
+                raise Exception("Circular Dependency")
+            if node not in relations:
+                for r in nodes:
+                    edges = self.engine.find_links_between(node, r)
+                    if edges:
+                        _visit(r, visited + [node])
+                relations.insert(0, node)
+
+        for n in nodes:
+            if n not in relations:
+                _visit(n)
+
+        joins = relations[0].table_clause
+        for f in relations[1:]:
+            links = []
+            for x in relations:
+                links = self.engine.find_links_between(x, f)
+                if links:
+                    break
+            columns = [(a.get_sa_column(), b.get_sa_column())
+                       for a, b in links]
+            if columns:
+                join_cond = functools.reduce(sa.and_,
+                                             [a == b for a, b in columns])
+            else:
+                join_cond = sa.sql.expression.literal(True)
+
+            joins = joins.join(f.table_clause, join_cond)
+        query =  SAQuery(sa.select(selects)
+                         .select_from(joins)
+                         , self.engine.db.connect())
+        return query
 
         sources = DataSourceFinder().visit(node)
 
@@ -260,13 +341,26 @@ class QueryPlanner(PreNodeVisitor):
             return node
 
 class QueryExecutor(PostNodeVisitor):
+    """
+    In: RelAlg node
+    Out: Pandas Dataframes
+    """
 
     def visit_sa_query(self, node):
-        query = sa.select([node.query])
-
-        result = pd.read_sql_query(query, node.conn)
+        result = pd.read_sql_query(node.query, node.conn)
         return result
 
+    def visit_pandas_merge(self, node):
+        return pd.merge(node.left, node.right, left_index=True,
+                        right_index=True)
+
+    def visit_pandas_arith(self, node):
+        f = constants.PYTHON_OPERATORS[node.op_code]
+
+        result = pd.DataFrame({
+            node.out_field: f(node.df[node.left_col],node.df[node.right_col])
+        })
+        return result
 
     def visit_pandas(self, node):
         pass

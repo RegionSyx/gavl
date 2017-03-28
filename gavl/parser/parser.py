@@ -19,7 +19,8 @@ from gavl.constants import OpCodes
 from gavl import nodes
 
 from pyparsing import (Word, alphas, nums, oneOf, opAssoc, operatorPrecedence,
-                       Suppress, Forward, delimitedList, Optional)
+                       Suppress, Forward, delimitedList, Optional, Literal,
+                       ZeroOrMore)
 
 _graphviz_counter = 0
 
@@ -72,8 +73,15 @@ def process_stmt(t):
     else:
         return AssignNode(t[0].var_name, t[1])
 
+bool_false = Literal("False")
+bool_true = Literal("True")
+bool_atom = bool_true | bool_false | variable
+bool_term = (bool_atom + oneOf('== <= >= < >') + bool_atom) | bool_atom
+bool_and = (bool_term + "and" + bool_term) | bool_term
+bool_expr = (bool_and + "or" + bool_and) | bool_and
+barop = "|" + bool_expr
 
-stmt = Optional(variable + Suppress("="), None) + expr
+stmt = Optional(variable + Suppress("="), None) + expr - ZeroOrMore(barop)
 stmt.setParseAction(process_stmt)
 
 

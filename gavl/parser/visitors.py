@@ -29,7 +29,7 @@ class GavlToRelAlg(nodes.NodeVisitor):
         if node.relation:
             return ProjectNode(node.relation, [node.var_name])
         else:
-            return Relation(node.var_name)
+            return RelationNode(node.var_name)
 
     def visit_int(self, node):
         return ConstantNode(self.gensym(), node.value)
@@ -39,16 +39,16 @@ class GavlToRelAlg(nodes.NodeVisitor):
 
     def visit_binary_op(self, node):
         op_code, left, right = node
-        left_is_var = isinstance(left, ProjectNode)
-        right_is_var = isinstance(right, ProjectNode)
-        assert left_is_var or right_is_var
+        left_is_var = len(ActiveFieldResolver().visit(left)) > 0
+        right_is_var = len(ActiveFieldResolver().visit(right)) > 0
 
         if left_is_var and right_is_var:
             left_fields = list(ActiveFieldResolver().visit(left))
             right_fields = list(ActiveFieldResolver().visit(right))
             assert len(left_fields) == 1
             assert len(right_fields) == 1
-            if left.relation == right.relation:
+            if (hasattr(left, 'relation') and hasattr(right, 'relation')
+                and left.relation == right.relation):
                 return ArithmeticNode(
                     ProjectNode(
                         left.relation,
@@ -60,11 +60,11 @@ class GavlToRelAlg(nodes.NodeVisitor):
                     JoinNode(left, right, constants.JoinTypes.INNER,
                             constants.JoinSides.FULL),
                     self.gensym(), left_fields[0], right_fields[0], op_code)
-        else:
+        elif left_is_var or right_is_var:
             active_field = None
-            if not left_is_relation:
+            if left_is_var:
                 active_field = list(ActiveFieldResolver().visit(left))[0]
-            if not right_is_relation:
+            if right_is_var:
                 active_field = list(ActiveFieldResolver().visit(right))[0]
             assert active_field is not None
 
@@ -73,6 +73,9 @@ class GavlToRelAlg(nodes.NodeVisitor):
                          constants.JoinSides.FULL),
                 [active_field]
             )
+        else:
+            return JoinNode(left, right, constants.JoinTypes.INNER,
+                            constants.JoinSides.FULL)
 
 
     def visit_apply(self, node):
