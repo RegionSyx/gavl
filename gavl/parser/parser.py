@@ -26,7 +26,8 @@ _graphviz_counter = 0
 
 
 from gavl.parser.nodes import (ApplyNode, UnaryOpNode, BinaryOpNode, VarNode,
-                               RelationNode, IntNode, AssignNode)
+                               RelationNode, IntNode, AssignNode, BarOpNode,
+                               BoolExprNode, BoolLiteral)
 
 expr = Forward()
 
@@ -74,15 +75,63 @@ def process_stmt(t):
         return AssignNode(t[0].var_name, t[1])
 
 bool_false = Literal("False")
+bool_false.setParseAction(lambda t: BoolLiteral(False))
 bool_true = Literal("True")
-bool_atom = bool_true | bool_false | variable
-bool_term = (bool_atom + oneOf('== <= >= < >') + bool_atom) | bool_atom
-bool_and = (bool_term + "and" + bool_term) | bool_term
-bool_expr = (bool_and + "or" + bool_and) | bool_and
-barop = "|" + bool_expr
+bool_true.setParseAction(lambda t: BoolLiteral(True))
+bool_atom = bool_true | bool_false | variable | integer
 
-stmt = Optional(variable + Suppress("="), None) + expr - ZeroOrMore(barop)
+bool_op = oneOf('== <= >= < >')
+bool_and = Literal('and')
+bool_or = Literal('or')
+bool_expr = operatorPrecedence(bool_atom, [
+    (bool_op, 2, opAssoc.LEFT),
+    (bool_and,  2, opAssoc.LEFT),
+    (bool_or,  2, opAssoc.LEFT)
+])
+bool_expr.setParseAction(lambda t: process_bool_expr(t))
+
+barop = expr + ZeroOrMore(Suppress("|") - bool_expr)
+barop.setParseAction(lambda t: process_barop(t))
+
+stmt = Optional(variable + Suppress("="), None) + barop
 stmt.setParseAction(process_stmt)
+
+def process_bool_expr(t):
+    if isinstance(t, (VarNode, BoolLiteral, IntNode)):
+        return t
+    if len(t) == 1:
+        return process_bool_expr(t[0])
+    elif len(t) == 3:
+        op = t[1]
+        if op == "<=":
+            op_code = OpCodes.LTE
+        elif op == ">=":
+            op_code = OpCodes.GTE
+        elif op == "<":
+            op_code = OpCodes.LT
+        elif op == ">":
+            op_code = OpCodes.GT
+        elif op == "==":
+            op_code = OpCodes.EQ
+        elif op == "and":
+            op_code = OpCodes.AND
+        elif op == "or":
+            op_code = OpCodes.OR
+        else:
+            op_code = None
+
+        return BoolExprNode(op_code, process_bool_expr(t[0]),
+                            process_bool_expr(t[2]))
+
+
+def process_barop(t):
+    if len(t) == 1:
+        return t[0]
+    elif len(t) == 2:
+        return BarOpNode(t[0], t[1])
+    elif len(t) > 2:
+        bool_exprs = t[1:]
+        return BarOpNode(process_barop(t[:-1]), t[-1])
 
 
 def process_expr(e):

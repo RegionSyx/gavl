@@ -91,6 +91,116 @@ class GavlToRelAlg(nodes.NodeVisitor):
     def visit_assign(self, node):
         return AssignNode(node.var_name, node.expr)
 
+    def visit_barop(self, node):
+        filtered = SelectNode(node.expr, node.bool)
+        return PushDownSelect().visit(filtered)
+
+    def visit_bool_expr(self, node):
+        return BoolOpNode(node.op_code, node.left, node.right)
+
+    def visit_bool_literal(self, node):
+        return BoolConstantNode(node.value)
+
+
+class PushDownSelect(nodes.PreNodeVisitor):
+
+    def visit_select(self, node):
+        if isinstance(node.relation, ConstantNode):
+            return node.relation
+        elif isinstance(node.relation, RelationNode):
+            return node
+        elif isinstance(node.relation, ProjectNode):
+            return ProjectNode(
+                SelectNode(node.relation.relation, node.bool_expr),
+                node.relation.fields
+            )
+        elif isinstance(node.relation, SelectNode):
+            return node
+        elif isinstance(node.relation, JoinNode):
+            left_rels = RelationFinder().visit(node.relation.left)
+            right_rels = RelationFinder().visit(node.relation.right)
+            bool_rels = RelationFinder().visit(node.bool_expr)
+
+            if bool_rels > left_rels and bool_rels > right_rels:
+                return node
+            elif not (bool_rels >= left_rels or bool_rels <= left_rels):
+                return node
+            elif not (bool_rels >= right_rels or bool_rels <= right_rels):
+                return node
+            elif len(bool_rels) > 0:
+                if bool_rels <= left_rels:
+                    left_result = SelectNode(node.relation.left,
+                                             node.bool_expr)
+                else:
+                    left_result = node.relation.left
+
+                if bool_rels <= right_rels:
+                    right_result = SelectNode(node.relation.right,
+                                              node.bool_expr)
+                else:
+                    right_result = node.relation.right
+            else:
+                return node.relation
+
+            return JoinNode(
+                left_result,
+                right_result,
+                node.relation.join_type, node.relation.join_side
+            )
+        elif isinstance(node.relation, ArithmeticNode):
+            return ArithmeticNode(
+                SelectNode(node.relation.relation, node.bool_expr),
+                node.relation.out_field,
+                node.relation.left_field,
+                node.relation.right_field,
+                node.relation.op_code
+            )
+        elif isinstance(node.relation, AggNode):
+            return AggNode(
+                SelectNode(node.relation.relation, node.bool_expr),
+                node.relation.out_field,
+                node.relation.field,
+                node.relation.func,
+                node.relation.groups
+            )
+        else:
+            return node
+
+class RelationFinder(nodes.PostNodeVisitor):
+
+    def visit_constant(self, node):
+        return set([])
+
+    def visit_relation(self, node):
+        return {node.name,}
+
+    def visit_project(self, node):
+        return node.relation
+
+    def visit_rename(self, node):
+        return node.relation
+
+    def visit_join(self, node):
+        return node.left | node.right
+
+    def visit_arithmetic(self, node):
+        return node.relation
+
+    def visit_agg(self, node):
+        return node.relation
+
+    def visit_select(self, node):
+        return node.relation | node.bool_expr
+
+    def visit_bool_op(self, node):
+        return node.left | node.right
+
+    def visit_bool_constant(self, node):
+        return set([])
+
+    def visit_select(self, node):
+        return node.relation
+
 
 class ActiveFieldResolver(nodes.NodeVisitor):
 

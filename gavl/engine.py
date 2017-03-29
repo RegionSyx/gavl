@@ -1,4 +1,3 @@
-
 # as noted in the individual source code files.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -113,7 +112,7 @@ class Engine(object):
 
         root_relalg = gavl.plan(root_ast)
         root_relalg = VariableReplacer(self).visit(root_relalg)
-
+        print(root_relalg)
 
         root_plan = QueryPlanner(self).visit(root_relalg)
         result = QueryExecutor().visit(root_plan)
@@ -183,7 +182,10 @@ class SASelectBuilder(PostNodeVisitor):
         return sa_relation.table_clause.columns
 
     def visit_project(self, node):
-        return [c for c in node.relation if c.name in node.fields]
+        projected = [c for c in node.relation if c.name in node.fields]
+        assert len(projected) == len(node.fields)
+        assert len(projected) > 0
+        return projected
 
     def visit_join(self, node):
         return list(node.left) + list(node.right)
@@ -193,7 +195,6 @@ class SASelectBuilder(PostNodeVisitor):
                 selects.append(c)
 
         return selects
-
 
     def visit_arithmetic(self, node):
         left_field = [c for c in node.relation if c.name == node.left_field]
@@ -216,6 +217,23 @@ class SASelectBuilder(PostNodeVisitor):
         agg_col = agg_col[0]
 
         return [agg_func(agg_col).label(node.out_field)]
+
+    def visit_select(self, node):
+        return node.relation
+
+    def visit_bool_op(self, node):
+        assert len(node.left) == 1, node
+        assert len(node.right) == 1, node
+        if node.op_code == constants.OpCodes.AND:
+            f = sa.and_
+        elif node.op_code == constants.OpCodes.OR:
+            f = sa.or_
+        else:
+            f = constants.PYTHON_OPERATORS[node.op_code]
+        return [f(node.left[0], node.right[0])]
+
+    def visit_bool_constant(self, node):
+        return [sa.sql.expression.literal(node.value)]
 
 
 class SAFromBuilder(PostNodeVisitor):
@@ -248,6 +266,47 @@ class SAFromBuilder(PostNodeVisitor):
     def visit_agg(self, node):
         return node.relation
 
+
+class SAWhereBuilder(PostNodeVisitor):
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    def visit_constant(self, node):
+        return []
+
+    def visit_relation(self, node):
+        return []
+
+    def visit_project(self, node):
+        return node.relation
+
+    def visit_join(self, node):
+        return node.left + node.right
+
+    def visit_select(self, node):
+        return node.relation + [node.bool_expr]
+
+    def visit_rename(self, node):
+        return node.relation
+
+    def visit_arithmetic(self, node):
+        return node.relation
+
+    def visit_agg(self, node):
+        return node.relation
+
+class SABoolBuilder(PreNodeVisitor):
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    def visit_select(self, node):
+        bool_expr = SASelectBuilder(self.engine).visit(node.bool_expr)[0]
+        return relalg.SelectNode(
+            node.relation,
+            bool_expr
+        )
 
 class PandasBuilder(PostNodeVisitor):
     pass
@@ -282,6 +341,9 @@ class QueryPlanner(PreNodeVisitor):
         # Shortcut for now
         selects = SASelectBuilder(self.engine).visit(node)
         froms = SAFromBuilder(self.engine).visit(node)
+        wheres = SAWhereBuilder(self.engine).visit(
+            SABoolBuilder(self.engine).visit(node)
+        )
         query = sa.select(selects)
         first_from = froms[0]
 
@@ -322,10 +384,11 @@ class QueryPlanner(PreNodeVisitor):
                 join_cond = sa.sql.expression.literal(True)
 
             joins = joins.join(f.table_clause, join_cond)
-        query =  SAQuery(sa.select(selects)
-                         .select_from(joins)
-                         , self.engine.db.connect())
-        return query
+
+        query = sa.select(selects).select_from(joins)
+        for where in wheres:
+            query = query.where(where)
+        return SAQuery(query, self.engine.db.connect())
 
         sources = DataSourceFinder().visit(node)
 

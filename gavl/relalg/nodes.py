@@ -21,9 +21,12 @@ RelAlgNode = nodes.Node
 ConstantNode = RelAlgNode("constant", "field value")
 RelationNode = RelAlgNode("relation", "name")
 ProjectNode = RelAlgNode("project", "relation fields")
+SelectNode = RelAlgNode("select", "relation bool_expr")
 RenameNode = RelAlgNode("rename", "relation old_name new_name")
 JoinNode = RelAlgNode("join", "left, right, join_type, join_side")
 ArithmeticNode = RelAlgNode("arithmetic",
                             "relation out_field left_field right_field op_code")
 AggNode = RelAlgNode("agg", "relation out_field field func groups")
 AssignNode = RelAlgNode("assign", "var_name relation")
+BoolOpNode = RelAlgNode("bool_op", "op_code left right")
+BoolConstantNode = RelAlgNode("bool_constant", "value")
