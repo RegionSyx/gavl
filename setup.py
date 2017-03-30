@@ -16,7 +16,7 @@
 from setuptools import setup, find_packages
 setup(
         name="gavl",
-        version="0.1.5",
+        version="0.1.6",
         description="Data definition language and aggregation layer",
         packages=find_packages(),
         include_package_data=True,
