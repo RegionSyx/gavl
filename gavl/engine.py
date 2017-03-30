@@ -106,16 +106,16 @@ class Engine(object):
                 result.append((a, b))
         return result
 
-    def query(self, query, groupby={}, filters=[]):
+    def query(self, query, groupby=[]):
+        groupby = [tuple(x.split('.')) for x in groupby]
         root_ast = gavl.parse(query)
         root_ast = VariableSaver(self).visit(root_ast)
 
         root_relalg = gavl.plan(root_ast)
         root_relalg = VariableReplacer(self).visit(root_relalg)
-        print(root_relalg)
 
         root_plan = QueryPlanner(self).visit(root_relalg)
-        result = QueryExecutor().visit(root_plan)
+        result = QueryExecutor(self, groupby).visit(root_plan)
 
         active_field = list(ActiveFieldResolver().visit(root_relalg))
 
@@ -409,20 +409,35 @@ class QueryExecutor(PostNodeVisitor):
     Out: Pandas Dataframes
     """
 
+    def __init__(self, engine, group_by={}):
+        self.engine = engine
+        self.group_by = group_by
+
     def visit_sa_query(self, node):
-        result = pd.read_sql_query(node.query, node.conn)
+        query = node.query
+        for k, v in self.group_by:
+            rel = self.engine.get_relation(k)
+            col = getattr(rel.table_clause.c, v)
+            query = query.column(col)
+            query = query.group_by(col).order_by(col)
+
+        result = pd.read_sql_query(query, node.conn)
         return result
 
     def visit_pandas_merge(self, node):
-        return pd.merge(node.left, node.right, left_index=True,
-                        right_index=True)
+        if len(self.group_by) == 0:
+            return pd.merge(node.left, node.right, left_index=True,
+                            right_index=True)
+        else:
+            return pd.merge(node.left, node.right)
 
     def visit_pandas_arith(self, node):
         f = constants.PYTHON_OPERATORS[node.op_code]
 
-        result = pd.DataFrame({
-            node.out_field: f(node.df[node.left_col],node.df[node.right_col])
-        })
+        result = node.df.copy()
+        result[node.out_field] = f(node.df[node.left_col],node.df[node.right_col])
+        group_cols = [v for k, v in self.group_by] + [node.out_field]
+        result = result[group_cols]
         return result
 
     def visit_pandas(self, node):
