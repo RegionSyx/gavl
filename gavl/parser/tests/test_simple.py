@@ -2,7 +2,7 @@ import pytest
 from gavl import parse
 from gavl.parser import nodes
 from gavl.parser.nodes import (VarNode, BinaryOpNode, RelationNode, ApplyNode,
-                               AssignNode, IntNode)
+                               AssignNode, IntNode, StrNode, BarOpNode)
 from gavl.constants import OpCodes
 
 
@@ -33,3 +33,9 @@ def test_simple_assign():
 def test_simple_constant():
     test = "1"
     expected = IntNode(1)
+    assert parse(test) == expected
+
+def test_simple_string():
+    test = "foo | 'hello, world'"
+    expected = BarOpNode(VarNode('foo', None), StrNode('hello, world'))
+    assert parse(test) == expected

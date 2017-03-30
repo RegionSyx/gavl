@@ -34,6 +34,9 @@ class GavlToRelAlg(nodes.NodeVisitor):
     def visit_int(self, node):
         return ConstantNode(self.gensym(), node.value)
 
+    def visit_string(self, node):
+        return ConstantNode(self.gensym(), "'{}'".format(node.value))
+
     def visit_relation(self, node):
         return RelationNode(node.name)
 

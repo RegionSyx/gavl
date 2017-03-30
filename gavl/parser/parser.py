@@ -20,18 +20,21 @@ from gavl import nodes
 
 from pyparsing import (Word, alphas, nums, oneOf, opAssoc, operatorPrecedence,
                        Suppress, Forward, delimitedList, Optional, Literal,
-                       ZeroOrMore)
+                       ZeroOrMore, quotedString, removeQuotes)
 
 _graphviz_counter = 0
 
 
 from gavl.parser.nodes import (ApplyNode, UnaryOpNode, BinaryOpNode, VarNode,
                                RelationNode, IntNode, AssignNode, BarOpNode,
-                               BoolExprNode, BoolLiteral)
+                               BoolExprNode, BoolLiteral, StrNode)
 
 expr = Forward()
 
 integer = Word(nums).setParseAction(lambda t: IntNode(int(t[0])))
+str_literal = quotedString()
+str_literal.addParseAction(removeQuotes)
+str_literal.addParseAction(lambda t: StrNode(t[0]))
 
 
 def parseVariable(t):
@@ -83,7 +86,7 @@ bool_false = Literal("False")
 bool_false.setParseAction(lambda t: BoolLiteral(False))
 bool_true = Literal("True")
 bool_true.setParseAction(lambda t: BoolLiteral(True))
-bool_atom = bool_true | bool_false | variable | integer
+bool_atom = bool_true | bool_false | variable | integer | str_literal
 
 bool_op = oneOf('== <= >= < >')
 bool_and = Literal('and')
@@ -102,7 +105,7 @@ stmt = Optional(variable + Suppress("="), None) + barop
 stmt.setParseAction(process_stmt)
 
 def process_bool_expr(t):
-    if isinstance(t, (VarNode, BoolLiteral, IntNode)):
+    if isinstance(t, (VarNode, BoolLiteral, IntNode, StrNode)):
         return t
     if len(t) == 1:
         return process_bool_expr(t[0])
