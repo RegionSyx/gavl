@@ -1,3 +1,4 @@
+
 # Copyright 2017 by Teem, and other contributors,
 # as noted in the individual source code files.
 #
@@ -13,5 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from gavl.parser import parse, plan
-from gavl.engine import Engine, SARelation
+import gavl.nodes
+
+ASTNode = gavl.nodes.Node
+
+ApplyNode = ASTNode("apply", "func_name func_arg")
+UnaryOpNode = ASTNode("unary_op", "op_code expr")
+BinaryOpNode = ASTNode("binary_op", "op_code left right")
+VarNode = ASTNode("var", "var_name relation")
+RelationNode = ASTNode("relation", "name")
+IntNode = ASTNode("int", "value")
+AssignNode = ASTNode("assign", "var_name expr")
+BarOpNode = ASTNode("barop", "expr bool")
+BoolExprNode = ASTNode("bool_expr", "op_code left right")
+BoolLiteral = ASTNode("bool_literal", "value")

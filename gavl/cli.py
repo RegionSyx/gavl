@@ -42,7 +42,8 @@ class REPL(cmd.Cmd):
 @click.argument('gavl_file', type=click.File(), default=None, required=False)
 @click.option('--interactive', default=False, is_flag=True)
 @click.option('--settings', envvar="GAVL_SETTINGS", type=str, required=True)
-def main(gavl_file, interactive, settings):
+@click.option('--groupby', type=str, multiple=True)
+def main(gavl_file, interactive, settings, groupby):
 
     sys.path.append(os.path.abspath(settings))
 
@@ -53,13 +54,7 @@ def main(gavl_file, interactive, settings):
         return 2
 
     if gavl_file is not None:
-        filters = [{"attr": 'date.day_date',
-                    "oper": ">=",
-                    "value": datetime.date(2017, 2, 13) },
-                   {"attr": 'date.day_date',
-                    "oper": "<=",
-                    "value": datetime.date(2017, 3, 13)}]
-        result = engine.query(gavl_file.read(), filters=filters)
+        result = engine.query(gavl_file.read(), groupby)
         if result is not None:
             click.echo(result)
 

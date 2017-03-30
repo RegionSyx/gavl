@@ -19,19 +19,15 @@ from gavl.constants import OpCodes
 from gavl import nodes
 
 from pyparsing import (Word, alphas, nums, oneOf, opAssoc, operatorPrecedence,
-                       Suppress, Forward, delimitedList, Optional)
+                       Suppress, Forward, delimitedList, Optional, Literal,
+                       ZeroOrMore)
 
 _graphviz_counter = 0
 
-ASTNode = nodes.Node
 
-ApplyNode = ASTNode("apply", "func_name func_arg")
-UnaryOpNode = ASTNode("unary_op", "op_code expr")
-BinaryOpNode = ASTNode("binary_op", "op_code left right")
-VarNode = ASTNode("var", "var_name relation")
-RelationNode = ASTNode("relation", "name")
-IntNode = ASTNode("int", "value")
-AssignNode = ASTNode("assign", "var_name expr")
+from gavl.parser.nodes import (ApplyNode, UnaryOpNode, BinaryOpNode, VarNode,
+                               RelationNode, IntNode, AssignNode, BarOpNode,
+                               BoolExprNode, BoolLiteral)
 
 expr = Forward()
 
@@ -49,8 +45,13 @@ def parseVariable(t):
 variable = delimitedList(
     Word(alphas + "_"), delim=".").setParseAction(parseVariable)
 
-func = Word(alphas) + Suppress("(") + expr + Suppress(")")
-func.setParseAction(lambda t: ApplyNode(t[0], t[1]))
+barop = Forward()
+func = (Word(alphas) + Suppress("(") + delimitedList(barop, delim=',') +
+        Suppress(")"))
+func.setParseAction(lambda t:
+                    ApplyNode(t[0], t[1]) if len(t) == 2
+                    else BinaryOpNode(OpCodes[t[0].upper()], t[1], t[2])
+                    )
 
 operand = func | integer | variable
 
@@ -78,13 +79,68 @@ def process_stmt(t):
     else:
         return AssignNode(t[0].var_name, t[1])
 
+bool_false = Literal("False")
+bool_false.setParseAction(lambda t: BoolLiteral(False))
+bool_true = Literal("True")
+bool_true.setParseAction(lambda t: BoolLiteral(True))
+bool_atom = bool_true | bool_false | variable | integer
 
-stmt = Optional(variable + Suppress("="), None) + expr
+bool_op = oneOf('== <= >= < >')
+bool_and = Literal('and')
+bool_or = Literal('or')
+bool_expr = operatorPrecedence(bool_atom, [
+    (bool_op, 2, opAssoc.LEFT),
+    (bool_and,  2, opAssoc.LEFT),
+    (bool_or,  2, opAssoc.LEFT)
+])
+bool_expr.setParseAction(lambda t: process_bool_expr(t))
+
+barop << expr + ZeroOrMore(Suppress("|") - bool_expr)
+barop.setParseAction(lambda t: process_barop(t))
+
+stmt = Optional(variable + Suppress("="), None) + barop
 stmt.setParseAction(process_stmt)
+
+def process_bool_expr(t):
+    if isinstance(t, (VarNode, BoolLiteral, IntNode)):
+        return t
+    if len(t) == 1:
+        return process_bool_expr(t[0])
+    elif len(t) == 3:
+        op = t[1]
+        if op == "<=":
+            op_code = OpCodes.LTE
+        elif op == ">=":
+            op_code = OpCodes.GTE
+        elif op == "<":
+            op_code = OpCodes.LT
+        elif op == ">":
+            op_code = OpCodes.GT
+        elif op == "==":
+            op_code = OpCodes.EQ
+        elif op == "and":
+            op_code = OpCodes.AND
+        elif op == "or":
+            op_code = OpCodes.OR
+        else:
+            op_code = None
+
+        return BoolExprNode(op_code, process_bool_expr(t[0]),
+                            process_bool_expr(t[2]))
+
+
+def process_barop(t):
+    if len(t) == 1:
+        return t[0]
+    elif len(t) == 2:
+        return BarOpNode(t[0], t[1])
+    elif len(t) > 2:
+        bool_exprs = t[1:]
+        return BarOpNode(process_barop(t[:-1]), t[-1])
 
 
 def process_expr(e):
-    if isinstance(e, (ApplyNode, IntNode, VarNode, RelationNode)):
+    if isinstance(e, (ApplyNode, IntNode, VarNode, RelationNode, BinaryOpNode)):
         return e
     if len(e) == 0:
         return None

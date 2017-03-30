@@ -15,6 +15,7 @@
 
 import enum
 import operator
+import sqlalchemy as sa
 
 
 class OpCodes(enum.Enum):
@@ -29,6 +30,10 @@ class OpCodes(enum.Enum):
     GT = 9
     GTE = 10
     EQ = 11
+    AND = 12
+    OR = 13
+    NOT = 14
+    LEAST = 15
 
 
 class JoinSides(enum.Enum):
@@ -62,4 +67,8 @@ PYTHON_OPERATORS = {
     OpCodes.GT: operator.gt,
     OpCodes.GTE: operator.ge,
     OpCodes.EQ: operator.eq,
+    OpCodes.AND: lambda a, b: a and b,
+    OpCodes.OR: lambda a, b: a or b,
+    OpCodes.NOT: operator.not_,
+    OpCodes.LEAST: sa.func.LEAST,
 }

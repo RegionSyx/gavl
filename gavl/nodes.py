@@ -19,37 +19,59 @@ import collections
 Node = collections.namedtuple
 
 
-class NodeVisitor(object):
+class BaseNodeVisitor(object):
+    pass
+
+
+class PostNodeVisitor(BaseNodeVisitor):
     node_class = Node
 
     def visit(self, node):
         name = node.__class__.__name__
 
-        pre_func = getattr(self, "pre_visit_{}".format(name), None)
-        post_func = (getattr(self, "post_visit_{}".format(name), None) or
-                     getattr(self, "visit_{}".format(name), None))
-
         if isinstance(node, tuple):
-            extras = {}
-            if pre_func is not None:
-                node, extras = pre_func(node)
-            else:
-                node, extras = self.pre_default_visit(node)
-
+            func = getattr(self, "visit_{}".format(name), self.default_visit)
             node = node.__class__(*[self.visit(x) for x in node])
-
-            if post_func is not None:
-                node = post_func(node, **extras)
-            else:
-                node = self.post_default_visit(node)
+            node = func(node)
 
         return node
 
     def default_visit(self, node):
         return node
 
-    def pre_default_visit(self, node):
-        return node, {}
 
-    def post_default_visit(self, node):
-        return self.default_visit(node)
+class PreNodeVisitor(BaseNodeVisitor):
+    node_class = Node
+
+    def visit(self, node):
+        name = node.__class__.__name__
+
+        if isinstance(node, tuple):
+            func = getattr(self, "visit_{}".format(name), self.default_visit)
+            node = func(node)
+            node = node.__class__(*[self.visit(x) for x in node])
+
+        return node
+
+    def default_visit(self, node):
+        return node
+
+
+class InlineNodeVisitor(BaseNodeVisitor):
+    node_class = Node
+
+    def visit(self, node):
+        name = node.__class__.__name__
+
+        if isinstance(node, tuple):
+            func = getattr(self, "visit_{}".format(name), self.default_visit)
+            node = node.__class__(*[self.visit(func(x)) for x in node])
+
+        return node
+
+    def default_visit(self, node):
+        return node
+
+
+# Use PostNodeVisitor as default visitor
+NodeVisitor = PostNodeVisitor
