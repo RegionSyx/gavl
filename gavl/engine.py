@@ -183,7 +183,7 @@ class SASelectBuilder(PostNodeVisitor):
 
     def visit_project(self, node):
         projected = [c for c in node.relation if c.name in node.fields]
-        assert len(projected) == len(node.fields)
+        assert len(projected) == len(node.fields), node
         assert len(projected) > 0
         return projected
 

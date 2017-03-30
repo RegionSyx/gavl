@@ -45,8 +45,13 @@ def parseVariable(t):
 variable = delimitedList(
     Word(alphas + "_"), delim=".").setParseAction(parseVariable)
 
-func = Word(alphas) + Suppress("(") + expr + Suppress(")")
-func.setParseAction(lambda t: ApplyNode(t[0], t[1]))
+barop = Forward()
+func = (Word(alphas) + Suppress("(") + delimitedList(barop, delim=',') +
+        Suppress(")"))
+func.setParseAction(lambda t:
+                    ApplyNode(t[0], t[1]) if len(t) == 2
+                    else BinaryOpNode(OpCodes[t[0].upper()], t[1], t[2])
+                    )
 
 operand = func | integer | variable
 
@@ -90,7 +95,7 @@ bool_expr = operatorPrecedence(bool_atom, [
 ])
 bool_expr.setParseAction(lambda t: process_bool_expr(t))
 
-barop = expr + ZeroOrMore(Suppress("|") - bool_expr)
+barop << expr + ZeroOrMore(Suppress("|") - bool_expr)
 barop.setParseAction(lambda t: process_barop(t))
 
 stmt = Optional(variable + Suppress("="), None) + barop
@@ -135,7 +140,7 @@ def process_barop(t):
 
 
 def process_expr(e):
-    if isinstance(e, (ApplyNode, IntNode, VarNode, RelationNode)):
+    if isinstance(e, (ApplyNode, IntNode, VarNode, RelationNode, BinaryOpNode)):
         return e
     if len(e) == 0:
         return None
