@@ -15,6 +15,7 @@ class SampleTable(Base):
     left = Column(Integer, nullable=False)
     right = Column(Integer, nullable=False)
 
+@pytest.mark.skip()
 @pytest.mark.parametrize('testcase', [
     ('test.left + test.right', 12),
     ('test.right + test.left', 12),
@@ -35,6 +36,7 @@ def test_simple_add(db, testcase):
 
 
 
+@pytest.mark.skip()
 @pytest.mark.parametrize('testcase', [
     ('test.left - test.right', 2),
     ('test.right - test.left', -2),
@@ -54,6 +56,7 @@ def test_simple_subtract(db, testcase):
 
 
 
+@pytest.mark.skip()
 @pytest.mark.parametrize('testcase', [
     ('test.left * test.right', 35),
     ('test.right * test.left', 35),
@@ -73,12 +76,13 @@ def test_simple_multiply(db, testcase):
 
 
 
+@pytest.mark.skip()
 @pytest.mark.parametrize('testcase', [
     ('test.left / test.right', 1),
     ('test.right / test.left', 0),
     ('test.left / test.left', 1),
 ])
-def test_simple_multiply(db, testcase):
+def test_simple_divide(db, testcase):
     SampleTable.__table__.create(bind=db)
     ins = SampleTable.__table__.insert().values(pk=1, left=7, right=5)
     db.execute(ins)

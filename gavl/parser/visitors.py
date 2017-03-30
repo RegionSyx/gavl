@@ -123,9 +123,10 @@ class PushDownSelect(nodes.PreNodeVisitor):
 
             if bool_rels > left_rels and bool_rels > right_rels:
                 return node
-            elif not (bool_rels >= left_rels or bool_rels <= left_rels):
-                return node
-            elif not (bool_rels >= right_rels or bool_rels <= right_rels):
+           # elif not (bool_rels >= left_rels or bool_rels <= left_rels):
+           #     return node
+           # elif  not (bool_rels >= right_rels or bool_rels <= right_rels):
+            elif not (bool_rels <= left_rels or bool_rels <= right_rels):
                 return node
             elif len(bool_rels) > 0:
                 if bool_rels <= left_rels:
@@ -212,6 +213,9 @@ class ActiveFieldResolver(nodes.NodeVisitor):
 
     def visit_project(self, node):
         return set(node.fields)
+
+    def visit_select(self, node):
+        return node.relation
 
     def visit_rename(self, node):
         return node.relation

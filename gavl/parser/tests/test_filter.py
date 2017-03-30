@@ -81,7 +81,7 @@ def test_expr_relalg_filter():
 def test_pushdown_relalg_filter():
     test = BarOpNode(
         BinaryOpNode(
-            OpCodes.ADD,
+            OpCodes.MULT,
             VarNode('foo', None),
             VarNode('buzz', None),
         ),
