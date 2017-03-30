@@ -157,7 +157,7 @@ class VariableReplacer(PostNodeVisitor):
 
 PlanNode = Node
 
-SAQuery = PlanNode('sa_query', 'query conn')
+SAQuery = PlanNode('sa_query', 'query db')
 PandasArith = PlanNode('pandas_arith', 'df out_field left_col right_col op_code')
 PandasMerge = PlanNode('pandas_merge', 'left right')
 
@@ -388,7 +388,7 @@ class QueryPlanner(PreNodeVisitor):
         query = sa.select(selects).select_from(joins)
         for where in wheres:
             query = query.where(where)
-        return SAQuery(query, self.engine.db.connect())
+        return SAQuery(query, self.engine.db)
 
         sources = DataSourceFinder().visit(node)
 
@@ -421,7 +421,9 @@ class QueryExecutor(PostNodeVisitor):
             query = query.column(col)
             query = query.group_by(col).order_by(col)
 
-        result = pd.read_sql_query(query, node.conn)
+        connection = node.db.connect()
+        result = pd.read_sql_query(query, connection)
+        connection.close()
         return result
 
     def visit_pandas_merge(self, node):
