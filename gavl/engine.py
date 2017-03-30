@@ -31,9 +31,9 @@ SUPPORTED_FILTER_OPERATORS = {
 }
 
 
-def create_sa_db(conn_string):
+def create_sa_db(conn_string, echo=False):
     db = sa.create_engine(conn_string, connect_args={'sslmode': 'prefer'},
-                          echo=True)
+                          echo=echo)
     return db
 
 
