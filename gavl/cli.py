@@ -43,7 +43,8 @@ class REPL(cmd.Cmd):
 @click.option('--interactive', default=False, is_flag=True)
 @click.option('--settings', envvar="GAVL_SETTINGS", type=str, required=True)
 @click.option('--groupby', type=str, multiple=True)
-def main(gavl_file, interactive, settings, groupby):
+@click.option('--output-sql', is_flag=True)
+def main(gavl_file, interactive, settings, groupby, output_sql):
 
     sys.path.append(os.path.abspath(settings))
 
@@ -54,7 +55,7 @@ def main(gavl_file, interactive, settings, groupby):
         return 2
 
     if gavl_file is not None:
-        result = engine.query(gavl_file.read(), groupby)
+        result = engine.query(gavl_file.read(), groupby, output_sql=output_sql)
         if result is not None:
             click.echo(result)
 

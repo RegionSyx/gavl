@@ -21,6 +21,7 @@ import pandas as pd
 from pandas.core.common import is_timedelta64_dtype
 import numpy as np
 import sqlalchemy as sa
+import sqlparse
 
 SUPPORTED_FILTER_OPERATORS = {
     "==": constants.OpCodes.EQ,
@@ -106,7 +107,7 @@ class Engine(object):
                 result.append((a, b))
         return result
 
-    def query(self, query, groupby=[]):
+    def query(self, query, groupby=[], output_sql=False):
         groupby = [tuple(x.split('.')) for x in groupby]
         root_ast = gavl.parse(query)
         root_ast = VariableSaver(self).visit(root_ast)
@@ -115,6 +116,8 @@ class Engine(object):
         root_relalg = VariableReplacer(self).visit(root_relalg)
 
         root_plan = QueryPlanner(self).visit(root_relalg)
+        if output_sql:
+            SQLQueryPrinter().visit(root_plan)
         result = QueryExecutor(self, groupby).visit(root_plan)
 
         active_field = list(ActiveFieldResolver().visit(root_relalg))
@@ -444,3 +447,23 @@ class QueryExecutor(PostNodeVisitor):
 
     def visit_pandas(self, node):
         pass
+
+class SQLQueryPrinter(PostNodeVisitor):
+
+    def visit_sa_query(self, node):
+        from sqlalchemy.sql import compiler
+        from psycopg2.extensions import adapt as sqlescape
+        session = sa.orm.session.Session(node.db)
+        query = sa.orm.query.Query(node.query, session)
+        dialect = query.session.bind.dialect
+        statement = query.statement
+        comp = compiler.SQLCompiler(dialect, statement)
+        comp.compile()
+        comp = node.query.compile(node.db)
+        enc = dialect.encoding
+        params = {}
+        for k,v in comp.params.items():
+            params[k] = sqlescape(str(v))
+        result = comp.string.format(*params)
+        print(sqlparse.format(result, reindent=True, keyword_case='upper'))
+        print(";")

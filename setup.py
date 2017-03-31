@@ -25,6 +25,7 @@ setup(
             'click',
             'sqlalchemy',
             'pandas',
+            'sqlparse',
             ],
         entry_points='''
             [console_scripts]
