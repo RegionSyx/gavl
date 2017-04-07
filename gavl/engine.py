@@ -464,6 +464,6 @@ class SQLQueryPrinter(PostNodeVisitor):
         params = {}
         for k,v in comp.params.items():
             params[k] = sqlescape(str(v))
-        result = comp.string.format(*params)
+        result = comp.string % params
         print(sqlparse.format(result, reindent=True, keyword_case='upper'))
         print(";")
